@@ -1,0 +1,214 @@
+﻿@page "/"
+@using BaseMauiApp.Data;
+@using Microsoft.Extensions.Logging;
+@using Radzen;
+@using Serilog;
+@using Radzen.Blazor;
+@using System.Linq.Dynamic.Core;
+@inject AppShell shell
+@inject NavigationManager Navigation
+
+<h1>Hello, world!</h1>
+
+<p id="tableCont">
+    <RadzenDataGrid @ref="grid" AllowFiltering="true" AllowSorting="true" Count="@count" AllowPaging="true" AllowColumnResize="true" ExpandMode="DataGridExpandMode.Multiple" ShowPagingSummary="true" FilterMode="FilterMode.Advanced"
+                    Data="@PremiumMembers" LoadData="@LoadData" TItem="VisitorGuestLog" RowRender="@RowRender" LoadChildData="@LoadChildData" PageSize="12" LogicalFilterOperator="LogicalFilterOperator.And" AllowMultiColumnSorting="true" PagerHorizontalAlign="HorizontalAlign.Justify">
+    <Columns>
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Title="Session" Frozen="true" Sortable="true" Filterable="true" Width="210px" Groupable="true">
+    <Template Context="data">
+    @if (!data.isGuest)
+    {
+    <strong>@data.SessionNumber</strong>
+    }
+    </Template>
+    </RadzenDataGridColumn>
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="SessionDateLocal" Filterable="false" Title="DateTime" Frozen="true" Width="190px" TextAlign="TextAlign.Center" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="TradeDate" Filterable="true" Title="Trade Date" Width="130px" FormatString="{0:d}" TextAlign="TextAlign.Center" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="MemberId" Title="Member Id" Width="140px" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="Tier" Title="Tier" Width="90px" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="FirstName" Title="First Name" Frozen="true" Width="175px" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="LastName" Title="Last Name" Width="175px" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="Location" Title="Location" Width="150px" />
+    <RadzenDataGridColumn TItem="VisitorGuestLog" Property="Action" Title="Action" Width="170px" />
+    </Columns>
+    </RadzenDataGrid>
+    <RadzenButton accesskey="E" hidden="@true" Click="GoBackToConfigPage">Go Back</RadzenButton>
+    <div id="refreshTextCont"><p id="toggleHeading">Refreshed: @RefreshDate._LocalDateTime</p></div>
+</p>
+
+<button accesskey="E" onclick="@(()=>GoBackToConfigPage())">Press me to navigate to XAML Page</button>
+
+@code {
+    [Inject]
+    protected ILogger<Index> _logger { get; set; }
+
+    int count;
+    public static int pageCounter = 0;
+    RadzenDataGrid<VisitorGuestLog> grid;
+    public DateHolder RefreshDate = new DateHolder(DateTime.UtcNow);
+    IEnumerable<VisitorGuestLog> PremiumMembers;
+    List<AccessSessionResponse> Members = new List<AccessSessionResponse>();
+    IEnumerable<AccessSessionResponse> Visitors;
+    LoadDataArgs arguments;
+    public DateTime fromDate;
+    public DateTime toDate;
+    public string toggle;
+    public bool allRecords;
+    public int requestNum = 0;
+    TimeZoneInfo _localTimeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById("Tasmania Standard Time");
+
+    async Task LoadData(LoadDataArgs args)
+    {
+        arguments = args;
+
+        await Task.Yield();
+
+        await GetPageData();
+    }
+
+    void RowRender(RowRenderEventArgs<VisitorGuestLog> args)
+    {
+        var result = Visitors
+        .Where(x => x.Guests
+        .Select(x => x.SessionNumber)
+        .Contains(args.Data.SessionNumber)
+        ).FirstOrDefault(new AccessSessionResponse()).Guests.Any() && !args.Data.isGuest;
+
+        args.Expandable = result;
+
+        args.Attributes.Add("style", $"font-weight: {(result ? "bold" : "normal")};");
+    }
+
+    void LoadChildData(DataGridLoadChildDataEventArgs<VisitorGuestLog> args)
+    {
+        _logger.LogInformation("Getting guest records.");
+        var guests = Visitors
+        .Where(x => x.Guests
+            .Select(x => x.SessionNumber)
+            .Contains(args.Item.SessionNumber)
+        ).FirstOrDefault(new AccessSessionResponse()).Guests;
+        _logger.LogInformation($"{guests.Count()} guest records found.");
+        args.Data = guests;
+    }
+
+    IEnumerable<AccessSessionResponse> GenerateGridData()
+    {
+        Random random = new Random();
+        var enumsA = (BaseMauiApp.Data.Action[])Enum.GetValues(typeof(BaseMauiApp.Data.Action));
+        var enumsL = (BaseMauiApp.Data.Location[])Enum.GetValues(typeof(BaseMauiApp.Data.Location));
+        var enumsT = (BaseMauiApp.Data.Tier[])Enum.GetValues(typeof(BaseMauiApp.Data.Tier));
+        var n = random.Next(0, 2);
+        for(int i = 0; i < 60000; i++)
+        {
+            List<VisitorGuestLog> guests = new List<VisitorGuestLog>();
+            var act = enumsA[i % 3];
+            var loc = enumsL[i % 2];
+            var tier = enumsT[i % 5];
+            var member = new VisitorGuestLog()
+                {
+                    MemberId = 99990 + i,
+                    FirstName = $"test{i}",
+                    LastName = $"test{i}",
+                    TradeDate = new DateTime(2023, 04, 20),
+                    Action = act,
+                    IsDoorSwipe = n == 1 ? true : false,
+                    isGuest = false,
+                    Location = loc,
+                    SessionDateLocal = new DateTime(2023, 04, 20),
+                    SessionDateUTC = new DateTime(2023, 04, 20),
+                    SessionNumber = i.ToString(),
+                    Tier = tier
+
+                };
+
+            act = enumsA[i % 3];
+            loc = enumsL[i % 2];
+            tier = enumsT[i % 5];
+            var guest = new VisitorGuestLog()
+                {
+                    MemberId = 89990 + i,
+                    FirstName = $"test{i}",
+                    LastName = $"test{i}",
+                    TradeDate = new DateTime(2023, 04, 20),
+                    Action = act,
+                    IsDoorSwipe = n == 1 ? true : false,
+                    isGuest = true,
+                    Location = loc,
+                    SessionDateLocal = new DateTime(2023, 04, 20),
+                    SessionDateUTC = new DateTime(2023, 04, 20),
+                    SessionNumber = i.ToString(),
+                    Tier = Tier.FRC
+                };
+            guests.Add(guest);
+            Members.Add(new AccessSessionResponse()
+            {
+                Visitor = member,
+                Guests = guests.AsEnumerable()
+
+            });
+        }
+        return Members;
+
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+
+    }
+
+    private async Task GetPageData()
+    {
+        requestNum++;
+        _logger.LogInformation($"Getting Page Data. Request buffer num: {requestNum}.");
+        Thread.Sleep(700);
+        if (requestNum == 1)
+        {
+            try
+            {
+
+                Visitors = GenerateGridData();
+
+
+                var query = Visitors.Select(x => x.Visitor).AsQueryable();
+
+                if (!string.IsNullOrEmpty(arguments.Filter))
+                {
+                    query = query.Where(arguments.Filter);
+                }
+
+                if (!string.IsNullOrEmpty(arguments.OrderBy))
+                {
+                    query = query.OrderBy(arguments.OrderBy);
+                }
+                count = query.Count();
+
+                PremiumMembers = query.Skip(arguments.Skip.Value).Take(arguments.Top.Value).ToList();
+                Visitors = Visitors.Where(x => PremiumMembers.Contains(x.Visitor));
+                RefreshDate._UTCDateTime = DateTime.UtcNow;
+                _logger.LogInformation("Successfully retrieved member data.");
+            }
+            catch (Exception ex)
+            {
+                requestNum = 0;
+                _logger.LogError(ex.Message, ex);
+                await Shell.Current.GoToAsync("ErrorPage");
+            }
+            _logger.LogInformation("Calling StateHasChanged");
+            await this.InvokeAsync(StateHasChanged);
+        }
+        if (requestNum > 0)
+        {
+            requestNum--;
+        }
+    }
+
+    private async void GoBackToConfigPage()
+    {
+        //Shell.Current.GoToAsync($"///ConfigPage?autoNavigateToMain={false}");
+        //App.Current.MainPage.Navigation.PushModalAsync(new ConfigPage());
+        //Navigation.NavigateTo("ConfigPage");
+        await Shell.Current.Navigation.PopToRootAsync();
+    }
+    //onclick="@(()=>GoBackToConfigPage())"
+}
